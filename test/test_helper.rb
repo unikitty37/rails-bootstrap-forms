@@ -1,13 +1,13 @@
+ENV['RAILS_ENV'] ||= 'test'
+
 require 'timecop'
 require 'diffy'
 require 'nokogiri'
 require 'equivalent-xml'
-require 'mocha/mini_test'
 
-ENV["RAILS_ENV"] = "test"
-
-require_relative "./dummy/config/environment.rb"
+require_relative "../demo/config/environment.rb"
 require "rails/test_help"
+require 'mocha/minitest'
 
 Rails.backtrace_cleaner.remove_silencers!
 
@@ -38,6 +38,13 @@ class ActionView::TestCase
     })
   end
 
+  # Originally only used in one test file but placed here in case it's needed in others in the future.
+  def form_with_builder
+    builder = nil
+    bootstrap_form_with(model: @user) { |f| builder = f }
+    builder
+  end
+
   def sort_attributes doc
     doc.dup.traverse do |node|
       if node.is_a?(Nokogiri::XML::Element)
@@ -51,9 +58,10 @@ class ActionView::TestCase
     end
   end
 
+  # Expected and actual are wrapped in a root tag to ensure proper XML structure
   def assert_equivalent_xml(expected, actual)
-    expected_xml        = Nokogiri::XML(expected)
-    actual_xml          = Nokogiri::XML(actual)
+    expected_xml        = Nokogiri::XML("<test-xml>\n#{expected}\n</test-xml>") { |config| config.default_xml.noblanks }
+    actual_xml          = Nokogiri::XML("<test-xml>\n#{actual}\n</test-xml>") { |config| config.default_xml.noblanks }
     ignored_attributes  = %w(style data-disable-with)
 
     equivalent = EquivalentXml.equivalent?(expected_xml, actual_xml, {
@@ -82,8 +90,8 @@ class ActionView::TestCase
     assert equivalent, lambda {
       # using a lambda because diffing is expensive
       Diffy::Diff.new(
-        sort_attributes(expected_xml.root),
-        sort_attributes(actual_xml.root)
+        sort_attributes(expected_xml.root).to_xml(indent: 2),
+        sort_attributes(actual_xml.root).to_xml(indent: 2)
       ).to_s(:color)
     }
   end

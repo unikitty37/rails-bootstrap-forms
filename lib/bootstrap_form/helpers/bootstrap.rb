@@ -1,14 +1,26 @@
 module BootstrapForm
   module Helpers
     module Bootstrap
-      def submit(name = nil, options = {})
-        options.reverse_merge! class: 'btn btn-secondary'
-        super(name, options)
+
+      def button(value = nil, options = {}, &block)
+        setup_css_class 'btn btn-secondary', options
+        super
       end
 
-      def primary(name = nil, options = {})
-        options.reverse_merge! class: 'btn btn-primary'
-        submit(name, options)
+      def submit(name = nil, options = {})
+        setup_css_class 'btn btn-secondary', options
+        super
+      end
+
+      def primary(name = nil, options = {}, &block)
+        setup_css_class 'btn btn-primary', options
+
+        if options[:render_as_button] || block_given?
+          options.except! :render_as_button
+          button(name, options, &block)
+        else
+          submit(name, options)
+        end
       end
 
       def alert_message(title, options = {})
@@ -23,9 +35,11 @@ module BootstrapForm
       end
 
       def error_summary
-        content_tag :ul, class: 'rails-bootstrap-forms-error-summary' do
-          object.errors.full_messages.each do |error|
-            concat content_tag(:li, error)
+        if object.errors.any?
+          content_tag :ul, class: 'rails-bootstrap-forms-error-summary' do
+            object.errors.full_messages.each do |error|
+              concat content_tag(:li, error)
+            end
           end
         end
       end
@@ -44,19 +58,18 @@ module BootstrapForm
         end
       end
 
-      def static_control(*args, &block)
+      def static_control(*args)
         options = args.extract_options!
         name = args.first
 
-        html = if block_given?
-          capture(&block)
-        else
-          object.send(name)
-        end
+        static_options = options.merge({
+          readonly: true,
+          control_class: [options[:control_class], static_class].compact.join(" ")
+        })
 
-        form_group_builder(name, options) do
-          content_tag(:p, html, class: static_class)
-        end
+        static_options[:value] = object.send(name) unless static_options.has_key?(:value)
+
+        text_field_with_bootstrap(name, static_options)
       end
 
       def custom_control(*args, &block)
@@ -66,16 +79,22 @@ module BootstrapForm
         form_group_builder(name, options, &block)
       end
 
-      def prepend_and_append_input(options, &block)
+      def prepend_and_append_input(name, options, &block)
         options = options.extract!(:prepend, :append, :input_group_class)
         input_group_class = ["input-group", options[:input_group_class]].compact.join(' ')
 
-        input = capture(&block)
+        input = capture(&block) || "".html_safe
 
         input = content_tag(:div, input_group_content(options[:prepend]), class: 'input-group-prepend') + input if options[:prepend]
         input << content_tag(:div, input_group_content(options[:append]), class: 'input-group-append') if options[:append]
+        input << generate_error(name)
         input = content_tag(:div, input, class: input_group_class) unless options.empty?
         input
+      end
+
+      def input_with_error(name, &block)
+        input = capture(&block)
+        input << generate_error(name)
       end
 
       def input_group_content(content)
@@ -84,8 +103,21 @@ module BootstrapForm
       end
 
       def static_class
-        "form-control-static"
+        "form-control-plaintext"
       end
+
+
+      private
+
+        def setup_css_class(the_class, options = {})
+          unless options.has_key? :class
+            if extra_class = options.delete(:extra_class)
+              the_class = "#{the_class} #{extra_class}"
+            end
+            options[:class] = the_class
+          end
+        end
+
     end
   end
 end
